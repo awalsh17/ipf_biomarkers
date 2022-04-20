@@ -50,15 +50,29 @@ all_diff <- bind_rows(all_diff, .id = "cell")
 
 write.csv(all_diff, "results/results_mast_ipf_v_control.csv", row.names = F)
 
+# Positive avg_logFC - higher in group 1 (Control) than group 2 (IPF)
 # Make dot plots or violin plots for genes of interest (all samples)
-plots <- VlnPlot(annotated, features = c("S100A6", "COL4A3", "LGALS3"),
+mygenes <- readLines("gene_symbols.txt")
+
+Idents(annotated) <- "Diagnosis"
+plots <- VlnPlot(annotated, features = mygenes,
+                 idents = c("Control","IPF"),
                  split.by = "Diagnosis",
                  group.by = "celltype", 
                  pt.size = 0, combine = FALSE)
 
+saveRDS(plots, "results/vlnplots_measuredgenes.Rds")
+
 # intersect results with list of interest
-mygenes <- readLines("gene_symbols.txt")
+
 diff_mygenes <- all_diff %>% filter(gene %in% mygenes)
 
 write.csv(diff_mygenes, "results/results_mast_ipf_v_control_selected.csv", row.names = F)
 
+# Can also move files to google drive:
+# library(googledrive)
+
+# googledrive::drive_auth()
+
+drive_upload(media = "results/vlnplots_measuredgenes.Rds",
+             path = "projects/")
