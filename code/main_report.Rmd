@@ -1,0 +1,1676 @@
+---
+title: "MUSC/Wisc. IPF Analysis: Protein measurements"
+author: 'Alice Walsh'
+date: '`r format.Date(Sys.time(), "%B %d %Y %H:%M", usetz = TRUE)`'
+output:
+  # github_document:
+  #   toc: true
+  #   toc_depth: 2
+  html_document:
+    fig_caption: yes
+    theme: cerulean
+    toc: true
+    number_sections: yes
+    toc_float: yes
+    code_folding: hide # make code 'hideable'
+params:
+  target_dataset:
+  ##_ show_code: display code inline, at end or hide?
+  show_code:
+  choices:
+  - end
+  - inline
+  - none
+input: select
+label: Show code
+value: end
+header-includes:
+- \usepackage{titling}
+- \usepackage{fancyhdr}
+- \usepackage{lastpage}
+- \pagestyle{fancy}
+- \fancyhead[LO,RE]{\thetitle}
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+editor_options: 
+  chunk_output_type: console
+---
+  
+  
+```{r setup, echo = FALSE, warning=FALSE, message = FALSE, eval = TRUE}
+##_ Clear the current session, to avoid unintended side effects from persisting data structures. 
+##_ Do not delete list $params - holds render-time parameters from YAML block
+rm(list = grep("params", ls(all.names = TRUE), 
+               invert = TRUE, value = TRUE))
+
+##_ Free up memory by forcing garbage collection
+invisible(gc())  
+
+##_ Manually set the seed to an arbitrary number for consistency in reports
+myseed <- 2021 # replace with an integer; don't use the same value in every analysis!
+if(is.na(myseed)) { stop("Set variable myseed to a valid integer") }
+set.seed(myseed, kind = "Mersenne-Twister", normal.kind = "Inversion")
+
+##_ Do not convert character vectors to factors unless explicitly indicated
+options(stringsAsFactors = FALSE)
+
+##_ Initiate timing the run
+startTime <- Sys.time()
+
+##_ Global Chunk Options
+knitr::opts_chunk$set(
+  ##_ Echo controls output of code chunks in the knitr output.  FALSE hides the code chunks
+  echo = (params$show_code == "inline"), # code display is controlled by the show_code parameter in the YAML block
+  eval = TRUE,
+  ##_ suppress extraneous, usually unwanted, messages in your knitr output
+  ##_ You might want to set some of these to true when debugging
+  message = TRUE, warning = FALSE,
+  results = "asis",  # for proper rendering of markdown tables
+  fig.align = "center",
+  out.width = "60%",
+  out.height = "60%",
+  fig.width = 7, 
+  fig.height = 5, 
+  fig.path='../results/figures/', dev=c('png', 'pdf'),
+  dpi = 400,   #may need to increase to 300 or 600 for complex figures
+  fig.show = "hold"  #print graphics after code chunk
+)
+
+
+##_ define engine to knit asis text & render inline R code for 'asis' chunks
+knitr::knit_engines$set(asis = function(options) {
+  if (options$echo && options$eval) knit_child(text = options$code)
+})
+
+knitr::opts_knit$set(root.dir = here::here())
+
+```
+
+```{r LoadPackages, warning=FALSE, echo=FALSE, message=FALSE}
+library(knitr)
+library(printr)  
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(ggplot2)
+library(dplyr)
+library(gtsummary)
+library(ComplexHeatmap)
+library(patchwork)
+library(lmerTest)
+library(emmeans)
+```
+
+```{r colors, echo = FALSE, warning=FALSE, message = FALSE, eval = TRUE}
+# I have color preferences
+theme_set(theme_minimal())
+scale_colour_discrete <- function(...) { ggsci::scale_color_npg()}
+  # function(...) {
+  # scale_colour_manual(..., values = rep(brewer.pal(n=8,name="Dark2"),5), na.value="grey60")}
+scale_fill_discrete <- function(...) { ggsci::scale_fill_npg() }
+  # function(...) {
+  # scale_fill_manual(..., values = brewer.pal(n=8,name="Dark2"), na.value="grey60")}
+```
+
+\newpage
+# Summary
+
+This report summarizes information on 26 proteins measured in IPF patients' serum from the collaboration with Dr. Lynn Schnapp (U. Wisconsin). This report was updated to include corrected values for IL-11 and additional data for SP-A1.
+
+The high-level conclusions are
+
++ Several proteins were elevated in IPF patients compared to normal samples 
+  + Epithelial damage: SP-D, AP-A1, CYFRA21-1, CA125
+  + ECM remodeling: TIMP1, MMP7
+  + Inflammatory: YKL40, IP-10, MDC, CXCL13
++ Several proteins were associated with current treatment (between no treatment and Nintedanib/Pirfenidone: SP-D, sICAM, CYFRA21-1, MDC, TARC, SDF-1ab)
++ No proteins were different between Nintedanib and Pirfenidone
++ Some proteins were weakly associated with pulmonary function variables (SP-D, CA19-9)
++ In subjects with multiple samples over a period of time, many of these proteins remain stable 
++ In patients with lung transplants, some proteins show consistent changes (SP-D, sICAM1, TARC, MDC, CYFRA21-1)
+
+Contributors: Alice Walsh, Larisa Sereda, Christina Ebert, Lynn Schnapp
+
+# Purpose
+
+The primary objective of the MUSC IPF collaboration is to discover circulating biomarkers of IPF while on treatment.
+
+# Load the data
+```{r load_data, echo=FALSE, warning=FALSE, message = FALSE}
+# load data
+dta <- readRDS(here::here('data/merged_data.Rds'))%>% 
+  rename(Mip4 = `_Mip4`,
+         POSTN = ` POSTN`)
+symbol_mapping <- read.csv(here::here('data/id_mapping.csv'))
+
+# Rename columns 
+old_names <- colnames(dta)[1:26]
+new_names <- symbol_mapping$clean_label[match(old_names, symbol_mapping$Label)]
+colnames(dta)[1:26] <- new_names
+
+```
+
+The clinical data and Inova data are loaded. Alice also manually mapped the identifiers for the 26 proteins to official gene symbols (when they existed) so we could have a common set of identifiers across all analysis.
+
+Therefore, the proteins were re-mapped to these identifiers (from "Label" to "gene_symbol")
+```{r}
+pander::pander(dplyr::select(symbol_mapping, Label, gene_symbol, Uniprot, clean_label))
+```
+
+
+### Notes on analytes below limit of detection
+
+There are missing values for some of the proteins (OPN, IL-6, IL-11, MCP3/CCL7). There are also negative values for one protein (MUC1).
+
+From Larisa Sereda:
+
+As to your Notes for some biomarkers: OPN,  IL-6, IL-11, MCP3(CCL7) and MUC1.
+
++ All missing values mean- they are below detection level.
++ In OPN and MUC1 there are few values that are below detection. No specific protein detected in these samples, but detected in all other samples.
++ IL-6, IL-11 and MCP3 - have many values below detection.
++ Normally, these cytokines should be absent/or very low - in a healthy human. They get elevated in a state of high stress (like severe respiratory syndrome, sepsis etc.). It is expected them to be close to zero, or really zero.
+
+In this analysis, we impute 0.5*LLOQ for those samples below LLOQ. However, given that over 50% of samples are below LLOQ for some proteins, a better approach might be to either exclude these proteins entirely from analysis or binarize (detected/not detected).
+
+For samples 8022-2 and 8031-2, some measurements were missing in the original data from Larisa, but set to 0.0. I will reset those to NA. (MDC, MCP-1, IL-6, IL-11, MCP-3_CCL7, IL-8, TARC, SDF-1ab, IP-10)
+
+```{r echo=FALSE}
+# Do some data cleaning
+dta$Visit[is.na(dta$Visit)] <- "Control"
+dta$Subject.ID[is.na(dta$Subject.ID)] <- dta$patient_id[is.na(dta$Subject.ID)]
+dta$disease <- ifelse(dta$Visit=="Control", "Control", "IPF")
+dta$current_rx_simple <- case_when(
+  dta$disease=="Control" ~ "Control",
+  grepl("Pirf",dta$Current.Rx) ~ "Pirfenidone",
+  grepl("Nint",dta$Current.Rx) ~ "Nintedanib",
+  is.na(dta$Current.Rx) ~ "None",
+  TRUE ~ dta$Current.Rx
+)
+dta$current_rx_dose <- case_when(
+  dta$disease=="Control" ~ "A_Control",
+  grepl("Nintedanib 100 mg BID",dta$Current.Rx) ~ "B_Nin_100",
+  dta$Current.Rx == "Nintedanib 150 mg BID" ~ "C_Nin_150",
+  dta$Current.Rx == "Pirfenidone 801 mg TID" ~ "E_Pir_801",
+  grepl("Pirfenidone",dta$Current.Rx) ~ "D_Pir_low",
+  is.na(dta$Current.Rx) ~ "F_None",
+  dta$Current.Rx =="None" ~ "F_None"
+)
+dta$treatment_simple <- case_when(
+  dta$disease=="Control" ~ "Control",
+  grepl("Pirf",dta$Current.Rx) ~ "Pirfenidone/Nintedanib",
+  grepl("Nint",dta$Current.Rx) ~ "Pirfenidone/Nintedanib",
+  is.na(dta$Current.Rx) ~ "None",
+  TRUE ~ dta$Current.Rx
+)
+
+dta$current_rx_simple <- factor(dta$current_rx_simple, 
+                                levels = c("Control", "None", "Pirfenidone", "Nintedanib"))
+dta <- dta %>% 
+  mutate(transplanted = ifelse((visit_date>transplant_date),"Y","N"))
+dta$transplanted[is.na(dta$transplant_date)] <- "N"
+dta$t_label <- ifelse(dta$transplanted=="Y","after transplant","-")
+# Calc visit in days from first visit (there are a couple visits without dates)
+# Add progressor label based on decrease in FVC
+dta$visit_date <- as.Date(dta$visit_date)
+dta <- dta %>% 
+  group_by(Subject.ID) %>% 
+  arrange(Visit) %>% 
+  mutate(days_from_visit1 = 
+           as.numeric(difftime(visit_date, visit_date[1],
+                                          units = "days")),
+         trans_from_visit1 = 
+           as.numeric(difftime(transplant_date, visit_date[1],
+                                          units = "days")),
+         diff_fvc = as.numeric(FVC_perc_pred - FVC_perc_pred[1]),
+         diff_fev = as.numeric(FEV1_perc_pred - FEV1_perc_pred[1]),
+         progressor = ifelse(any(diff_fvc< (-12)), "Y","N")) %>% 
+  ungroup() 
+dta$plate <- factor(dta$plate)
+# Lynn sent information on race: Patient ID 8026 is AA. All others are caucasian
+dta$race <- "Caucasian"
+dta$race[dta$Subject.ID=="8026"] <- "African American"
+
+# Other data issues
+dta$MUC1[dta$MUC1<0] <- 0
+dta$MDC[dta$MDC==0.0000] <- NA
+dta$TARC[dta$TARC==0.0000] <- NA
+dta$IL8[dta$IL8==0.0000] <- NA
+dta$SDF1[dta$SDF1==0.0000] <- NA
+dta$IP10[dta$IP10==0.0000] <- NA
+dta$MCP1[dta$MCP1==0.0000] <- NA
+dta$IL6[dta$IL6==0.0000] <- NA
+dta$IL11[dta$IL11==0.0000] <- NA
+dta$`CCL7`[dta$`CCL7`==0.0000] <- NA
+
+```
+
+Missing data by protein
+
+```{r fig.width=8,fig.height=6}
+naniar::vis_miss(dta[,c(1:26)])
+```
+
+```{r}
+# IMPUTE LLOQ for IL6, IL11, IL8
+# These were from Larisa via email
+# OPN -     0.4ng/ml
+# MCP3 -  2.5pg/ml
+# IL-11 -    0.5pg/ml
+# IL-6  -     0.25pg/ml
+# IL-8  -     0.25pg/ml
+
+dta$IL11_orig <- dta$`IL11`
+dta$IL8_orig <- dta$IL8
+dta$IL6_orig <- dta$`IL6` 
+dta$CCL7_orig <- dta$`CCL7`
+dta$OPN_orig <- dta$OPN
+
+dta$`IL11`<- ifelse(is.na(dta$`IL11`), 0.25, 
+                     dta$`IL11`)
+dta$IL8<- ifelse(is.na(dta$`IL8`), 0.125,
+                    dta$`IL8`)
+dta$`IL6` <- ifelse(is.na(dta$`IL6`), 0.125,
+                     dta$`IL6`)
+dta$OPN <- ifelse(is.na(dta$OPN), 0.2,
+                     dta$OPN)
+dta$`CCL7` <- ifelse(is.na(dta$`CCL7`), 1.25,
+                     dta$`CCL7`)
+
+# Also create a dataset that is the residuals after model with plate
+# This will only be data for the IPF samples as the control samples are only on plate 1
+plot_vars <- names(dta)[1:26]
+
+adj_data <- 
+  filter(dta, disease=="IPF") %>% 
+  select(all_of(plot_vars), plate) %>% 
+  mutate(plate = as.numeric(as.character(plate))) %>% 
+  mutate_all(~log2(.+0.1)) %>% 
+  mutate(plate = factor(ceiling(plate)))
+
+# need to impute missing values in order to do lm
+adj_data$TARC[is.na(adj_data$TARC)] <- min(adj_data$TARC, na.rm = T)
+adj_data$MDC[is.na(adj_data$MDC)] <- min(adj_data$MDC, na.rm = T)
+adj_data$SDF1[is.na(adj_data$SDF1)] <- min(adj_data$SDF1, na.rm = T)
+adj_data$IP10[is.na(adj_data$IP10)] <- min(adj_data$IP10, na.rm = T)
+adj_data$MCP1[is.na(adj_data$`MCP1`)] <- min(adj_data$`MCP1`, na.rm = T)
+resid_dta <- data.frame(apply(adj_data, 2, 
+                              function(x) 
+                                lm(x~plate, data=adj_data)$residuals))
+
+dta_adjusted <- filter(dta, disease=="IPF")
+dta_adjusted[,1:26] <- resid_dta[,1:26]
+rm(adj_data, resid_dta)
+
+# dta_clean <- dta
+# names(dta_clean) <- make.names(names(dta_clean))
+
+```
+
+For the markers with many samples below the limit of detection (IL11, IL-8, IL-6, and MCP/CCL7). What is the prevalence of negative/positive if we dichotomize?
+
+Here, we are considering the number of subjects with 1+ sample above or below limit of detection (therefore total n could be greater than the unique number of subjects if a subject has both pos and neg samples).
+
+```{r}
+dta %>% 
+  group_by(disease, Subject.ID) %>% 
+  mutate(IL11_pos = !is.na(IL11_orig)) %>% 
+  distinct(disease, Subject.ID, IL11_pos) %>% 
+  group_by(disease, IL11_pos) %>% 
+  summarise(n = n(), .groups="drop") %>% 
+  tidyr::pivot_wider(names_from = IL11_pos, values_from=n) %>% 
+  rename(`IL11-pos` = `TRUE`, `IL11-neg` = `FALSE`) %>% 
+  pander::pander()
+  
+```
+
+```{r}
+dta %>% 
+  group_by(disease, Subject.ID) %>% 
+  mutate(IL8_pos = !is.na(IL8_orig)) %>% 
+  distinct(disease, Subject.ID, IL8_pos) %>% 
+  group_by(disease, IL8_pos) %>% 
+  summarise(n = n(), .groups="drop") %>% 
+  tidyr::pivot_wider(names_from = IL8_pos, values_from=n) %>% 
+  rename(`IL8-pos` = `TRUE`, `IL8-neg` = `FALSE`)%>% 
+  pander::pander()
+  
+```
+
+```{r}
+dta %>% 
+  group_by(disease, Subject.ID) %>% 
+  mutate(IL6_pos = !is.na(IL6_orig)) %>% 
+  distinct(disease, Subject.ID, IL6_pos) %>% 
+  group_by(disease, IL6_pos) %>% 
+  summarise(n = n(), .groups="drop") %>% 
+  tidyr::pivot_wider(names_from = IL6_pos, values_from=n) %>% 
+  rename(`IL6-pos` = `TRUE`, `IL6-neg` = `FALSE`)%>% 
+  pander::pander()
+  
+```
+
+```{r}
+dta %>% 
+  group_by(disease, Subject.ID) %>% 
+  mutate(CCL7_pos = !is.na(CCL7_orig)) %>% 
+  distinct(disease, Subject.ID, CCL7_pos) %>% 
+  group_by(disease, CCL7_pos) %>% 
+  summarise(n = n(), .groups = "drop") %>% 
+  tidyr::pivot_wider(names_from = CCL7_pos, values_from=n) %>% 
+  rename(`CCL7-pos` = `TRUE`, `CCL7-neg` = `FALSE`)
+  
+```
+
+Are these markers above limit of detection (positive) in the same subjects? Yes, generally the three markers (CCL7, IL11, and IL6) are correlated and all neg or pos in the same subjects.
+
+
+## Protein categories
+Created categories of proteins based on biological function: 
+
+- Epithelial damage: "SP-D", "SP-A1","CYFRA21-1", "CA19-9", "CA125", "MUC1"
+- ECM remodeling: "MMP7", "POSTN", "TIMP1", "TIMP2","OPN","TNC"
+- Thrombosis: "tPAI-1"
+- Acute inflammatory: "IL-11", "MCP-3_CCL7", "MCP-1", "IL-8", "IP-10", "IL-6"
+- Fibrotic inflammatory: "Mip4", "CXCL13", "YKL40", "sICAM", "TARC", "MDC", "SDF-1ab"
+
+```{r}
+# Create categories of proteins based on biological function
+biol_groups <- list()
+biol_groups$`Epithelial Damage` <- 
+  c("SP-D", "SP-A1","CYFRA21-1", "CA19-9", "CA125", "MUC1")
+biol_groups$`Fibrotic Inflammatory` <- 
+  c("Mip4", "CXCL13", 
+    "YKL40","sICAM",
+    "TARC","MDC",
+    "SDF-1ab")
+biol_groups$`Acute Inflammatory` <- 
+  c("IL-11","MCP-3_CCL7", "MCP-1",
+    "IL-8", "IP-10", "IL-6")
+biol_groups$`ECM Remodeling` <- 
+  c("MMP7", "POSTN", "TIMP1", "TIMP2","OPN","TNC")
+biol_groups$`Thrombosis` <- c("tPAI-1")
+
+biol_table <- data.frame("Label" = c("SP-D", "SP-A1",
+                                     "CYFRA21-1", "CA19-9", 
+                                     "CA125", "MUC1",
+                                       "MMP7", "POSTN", 
+                                     "TIMP1", "TIMP2",
+                                     "OPN","TNC",
+                                     "tPAI-1",
+                                     "IL-11","MCP-3_CCL7", 
+                                     "MCP-1", "IL-8", 
+                                     "IP-10", "IL-6",
+                                     "Mip4", "CXCL13", 
+                                     "YKL40","sICAM",
+                                     "TARC","MDC",
+                                     "SDF-1ab"
+                                     ),
+                         "group" = c(rep("Epithelial Damage",6),
+                                     rep("ECM Remodeling",6),
+                                     "Thrombosis",
+                                     rep("Acute Inflammatory",6),
+                                     rep("Fibrotic Inflammatory",7)
+                                     )) %>% 
+  left_join(symbol_mapping)
+# Remap to gene_symbols
+biol_groups <- lapply(biol_groups, function(x) symbol_mapping$clean_label[symbol_mapping$Label%in% x])
+
+```
+
+
+## Cohort Summary
+For this analysis, we focus on:
+
++ Normal controls versus patients
++ Differences by current treatment
++ Any changes over visits
+
+
+Some observations (see tables below):
+
++ There are 48 unique patients and 6 normal samples
++ Current Rx are Nintedanid or Pirfenidone, but there is some variability in doses and how the data is coded
++ We have very few patients in this cohort that switched treatment during the study. We could curate further by manually reviewing the notes.
++ The number of visits per patient varies from 1 to 9. 30 patients have 2 or more visits, 23 patients have 3 or more visits.
+
+```{r}
+dta %>% 
+  filter(disease=="IPF") %>% 
+  count(Current.Rx)
+```
+
+For the current treatment, DLCO, FEV1, FVC, these are given for the first visit for a given subject.
+
+```{r}
+vars_of_interest <- c("disease","current_rx_simple",
+                      "visits","race",
+                      "Gender","Age.at.enrollment",
+                      "Current.Smoker", 
+                      "Ex.smoker",
+                      "FEV1_perc_pred","FVC_perc_pred",
+                      "DLCO.ml_mmHg_min_perc_pred")
+
+table_one <- dta %>%
+  # filter(disease=="IPF") %>%
+  group_by(Subject.ID, disease) %>% 
+  mutate(visits = n())%>% 
+  arrange(Visit) %>% 
+  summarise("Treatment (first visit)" = current_rx_simple[1],
+            "Number of visits" = visits[1],
+            "Race" = race[1],
+            Gender = Gender[1],
+            "Age at enrollment" = Age.at.enrollment[1],
+            "Current smoker" = Current.Smoker[1],
+                "Ex-smoker" = Ex.smoker[1],
+                "FEV1 (%, first available)" = na.omit(FEV1_perc_pred)[1],
+                "FVC (%, first available)" = na.omit(FVC_perc_pred)[1],
+                "DLCO (mL/min/mm Hg %, first available)" = na.omit(DLCO.ml_mmHg_min_perc_pred)[1],
+            "Received transplant" = any(!is.na(transplant_date)),
+            .groups = "drop") %>% 
+  mutate(`Current smoker` = factor(`Current smoker`, levels = c("No", "Yes")),
+         `Ex-smoker` = factor(`Ex-smoker`, levels = c("No", "Yes")),
+         `Number of visits` = ifelse(`Number of visits`>=4, "4+", `Number of visits`)) %>%
+  distinct(Subject.ID, .keep_all = T) %>% 
+  dplyr::select(-Subject.ID) %>%
+  tbl_summary(by = disease) 
+
+table_one %>% as_gt() %>% gt::gtsave(filename = here::here("results/table_one.png"))
+```
+
+We also have information for the subjects that did not continue in the study due to death or other reasons. (These numbers are on the entire 50 patient cohort, only 48 of these had protein data.)
+
++ 11/50 subjects died - we could do a survival analysis to examine prognostic factors if we had more information on the date of death
++ 5/50 subjects withdrew from the study after 1+ visit
++ 4/50 subjects received a lung transplant
++ 1/50 subjects left the study due to lung cancer
+
+# Exploratory analysis
+
+### Correlations between proteins
+
+Here is a summary of the Spearman correlation coefficients for the numeric variables. Missing observations are removed. 
+
+Observations:
+
+- Several of the inflammation markers are highly correlated (CCL7, IL-6, IL-11, IL-8, CXCL13 cluster)
+- Some of the ECM remodeling markers are moderately correlated (TNC, TIMP1, TIMP2, MMP7, OPN)
+- SP-D is moderately correlated with sICAM1
+
+```{r fig.height=12, fig.width=12}
+plot_vars <- names(dta)[1:26]
+select_at(dta,  
+       all_of(plot_vars)) %>% 
+  cor(method = "spearman", use = "complete.obs") %>%
+  corrplot(., method = "number", order = "hclust",
+          number.cex = 0.75, title= "All Samples")
+
+```
+
+```{r fig.height=12, fig.width=12}
+plot_vars <- names(dta)[1:26]
+filter(dta, disease == "IPF") %>% 
+  select_at(
+       all_of(plot_vars)) %>% 
+  cor(method = "spearman", use = "complete.obs") %>%
+  corrplot(., method = "number", order = "hclust",
+          number.cex = 0.75, title= "Only IPF Samples")
+
+# write out spearman corr
+filter(dta, disease == "IPF") %>% 
+  select_at(
+       all_of(plot_vars)) %>% 
+  # cor(method = "spearman", use = "complete.obs") %>% 
+  corrr::correlate(method = "spearman") %>% 
+  corrr::stretch() %>% 
+  write.csv(file = here::here('results/ipf_spear_cor.csv'), row.names = F)
+  
+```
+
+
+### PCA 
+
+Observations:
+
++ There are two samples (8031-2, 8022-2) that were missing some values as noted above. They are removed from this PCA analysis.
++ Normal samples are somewhat separate from IPF
++ There is some separation by plate
++ No clearly defined clusters that might represent patient subgroups are visually apparent
+
+```{r  echo=FALSE}
+run_pca <- function(x, retx = TRUE, center = TRUE, scale = TRUE) {
+  pca <- prcomp(t(x), retx = retx, center = center, scale. = scale)
+  variances <- pca$sdev^2
+  explained <- variances / sum(variances)
+  return(list(PCs = pca$x, explained = explained))
+}
+```
+
+```{r}
+# PCA using all proteins ----
+pca_data <- filter(dta, 
+             !patient_id %in% c("8031-2", "8022-2"))
+all_pc <- run_pca(t(log2(pca_data[,c(1:26)] + 0.1)))
+# Add information for the plot
+pcplus <- as.data.frame(all_pc$PCs[,1:4])
+pcplus <- cbind(pcplus, pca_data[,c(27:60)])
+```
+
+```{r fig.width=5, fig.height=5}
+ggplot(pcplus, 
+       aes(x=PC1, y=PC2, shape=factor(plate), color = disease)) +
+  geom_point(size = 2, alpha=0.8) +
+  xlab(paste("PC1 (", 100*round(all_pc$explained[1], 
+                                digits = 3), "%)")) +
+  ylab(paste("PC2 (", 100*round(all_pc$explained[2], 
+                                digits = 3), "%)")) +
+  labs(title = "PCA of all samples") 
+```
+
+```{r fig.width=5, fig.height=5}
+ggplot(pcplus, 
+       aes(x=PC1, y=PC3, shape=factor(plate), color = disease)) +
+  geom_point(size = 2, alpha=0.8) +
+  xlab(paste("PC1 (", 100*round(all_pc$explained[1], 
+                                digits = 3), "%)")) +
+  ylab(paste("PC3 (", 100*round(all_pc$explained[3], 
+                                digits = 3), "%)")) +
+  labs(title = "PCA of all samples") 
+```
+
+
+# Visualization by technical factors
+
+We want to make sure the protein concentrations are not associated with the plate, column, or row.
+
+The DOE (design of experiment) that was done by Ron Ammar to randomize IPF samples by plate: 
+
++ The samples be randomized primarily by *treatment group* and *baseline/current pulmonary function* (DLCO at enrollment) and secondarily by *sex*. 
++ *Due to the limited number of plates, in this analysis we do not pair samples (ie. place samples from the same subject ID onto the same plate).*
++ It was tested and confirmed that there is no significant association between plate assignment and our sample variables of interest.
+
+Observations:
+
++ The normal samples were all on one plate. Therefore, we modeled association with plate with only the IPF samples.
++ Many proteins are associated with plate: CA125, CA19-9, TIMP1, TIMP2, tPAI-1, YKL40, sICAM, SP-A1, POSTN, and CYFRA21-1
++ Therefore, final stats should adjust for plate (any comparisons between normal samples and IPF patients are clouded by inability to adjust for plate effect - one option is to just compare normal samples to IPF samples on plate 1)
++ Do not see clear pattern of differences based on the row or column
+
+
+```{r echo=FALSE}
+#Plot each by some variable ----
+make_plot <- function(my_data, 
+                      my_variable, #x=axis
+                      plot_vars, #y-axis
+                      color_var, #color
+                      n_facet_rows = 2,
+                      transform = TRUE){
+  my_variable <- enquo(my_variable)
+  color_var <- enquo(color_var)
+  if(transform){
+    my_data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  !!my_variable, !!color_var) %>% 
+  filter(!is.na(!!my_variable), !is.na(value)) %>% 
+  ggplot(aes(y=log2(value + 0.1), x=factor(!!my_variable))) +
+  geom_boxplot(outlier.shape = NA,na.rm = TRUE) + 
+  geom_jitter(height = 0, width=0.2,
+              aes(color = !!color_var, shape = !!color_var),
+              na.rm = TRUE, show.legend = T) + 
+  # stat_compare_means(size = 2) +
+  facet_wrap(~variable, scales = "free", nrow = n_facet_rows) + 
+  labs(title = paste0(rlang::as_name(my_variable))) 
+    
+  } else{
+    my_data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  !!my_variable, !!color_var) %>% 
+  filter(!is.na(!!my_variable), !is.na(value)) %>% 
+  ggplot(aes(y=value, x=factor(!!my_variable))) +
+  geom_boxplot(outlier.shape = NA,na.rm = TRUE) + 
+  geom_jitter(height = 0, width=0.2,
+              aes(color = !!color_var, shape = !!color_var),
+              na.rm = TRUE, show.legend = T) + 
+  facet_wrap(~variable, scales = "free", nrow = n_facet_rows) + 
+        labs(title = paste0(rlang::as_name(my_variable))) 
+  }
+}
+```
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "plate + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta, disease=="IPF"), x) %>% anova() %>% broom::tidy()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+# reformat to a data.frame and add FDR
+all_stats_plate <- bind_rows(all_tests, .id = "protein") %>% 
+  group_by(term) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup() %>% 
+  mutate(stat_sig = fdr<0.05)
+# also add the effect size? (log2FC, emmeans?)
+
+# Print for report
+all_stats_plate %>% 
+  select(protein, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.05)
+```
+
+```{r fig.height=12, fig.width=12}
+plot_vars <- names(dta)[1:26]
+make_plot(filter(dta, disease=="IPF"),
+          my_variable = plate, 
+          n_facet_rows = 4,
+          plot_vars = plot_vars,
+          color_var = plate) + 
+  labs(caption = "IPF samples only")
+
+```
+
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "row + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta, disease=="IPF"), x) %>% anova() %>% broom::tidy()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+# reformat to a data.frame and add FDR
+all_stats_row <- bind_rows(all_tests, .id = "protein") %>% 
+  group_by(term) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup() %>% 
+  mutate(stat_sig = fdr<0.05)
+# also add the effect size? (log2FC, emmeans?)
+
+# Print for report
+all_stats_row %>% 
+  select(protein, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.05)
+```
+
+```{r fig.height=12, fig.width=12}
+plot_vars <- names(dta)[1:26]
+make_plot(filter(dta, disease=="IPF"),
+          my_variable = row, 
+          n_facet_rows = 4,
+          color_var = plate,
+          plot_vars = plot_vars)+ 
+  labs(caption = "IPF samples only")
+
+```
+
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "column + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta, disease=="IPF"), x) %>% anova() %>% broom::tidy()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+# reformat to a data.frame and add FDR
+all_stats_column <- bind_rows(all_tests, .id = "protein") %>% 
+  group_by(term) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup() %>% 
+  mutate(stat_sig = fdr<0.05)
+# also add the effect size? (log2FC, emmeans?)
+
+# Print for report
+all_stats_column %>% 
+  select(protein, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.05)
+```
+
+
+```{r fig.height=12, fig.width=12}
+plot_vars <- names(dta)[1:26]
+make_plot(filter(dta, disease=="IPF"),
+          my_variable = column, 
+          color_var = plate,
+          n_facet_rows = 4,
+          plot_vars = plot_vars)+ 
+  labs(caption = "IPF samples only")
+
+```
+
+# Visualization by clinical factors
+We associated log2(value+0.1) protein levels with:
+
++ Disease status (IPF or Normal)
++ Current treatment 
++ Ex-smoker status
++ Pulmonary function variables (DCLO, FVC, FEV1)
+
+## Overall heatmap
+
+Columns are ordered by disease and subject
+
+```{r fig.width=8, fig.height=8}
+col_fun <- circlize::colorRamp2(c(-3, 0, 3), 
+                                # c("cornflowerblue", "white", "firebrick"))
+                                # c("#0200ad", "white", "#fbfcbd"))
+                                c("#440154FF","white","#FDE725FF"))
+# sample_annot <- HeatmapAnnotation(disease = dta$disease, 
+#                   transplanted = dta$transplanted,
+#                   plate = factor(dta$plate),
+#                   subject = dta$Subject.ID,
+#                   col = list(disease = c("Control"="gray","IPF"="dodgerblue3"),
+#                              transplanted = c("N"="white","Y"="red"),
+#                              plate = c("1"="#377EB8","2"="#4DAF4A")),
+#                   show_legend = c(TRUE, TRUE, TRUE, FALSE))
+
+# Simplified
+# sample_annot <- HeatmapAnnotation(disease = dta$disease, 
+#                   col = list(disease = c("Control"="gray","IPF"="dodgerblue3")),
+#                   show_legend = c(TRUE))
+protein_annot <- rowAnnotation(
+  group = biol_table$group[match(colnames(dta)[1:26],biol_table$clean_label)],
+  col = list(group = c("ECM Remodeling" = "#E64B35FF", 
+                       "Epithelial Damage" = "#4DBBD5FF",
+                       "Acute Inflammatory" = "#00A087FF", 
+                       "Thrombosis" = "gray",
+                       "Fibrotic Inflammatory" = "#3C5488FF")))
+  
+Heatmap(t(scale(dta[,1:26])),
+        col = col_fun,
+        column_order = order(dta$Subject.ID),
+        clustering_method_rows = "ward.D2",
+        # top_annotation = sample_annot,
+        right_annotation = protein_annot,
+        column_split = dta$disease,
+        show_column_dend = FALSE,
+        column_gap = unit(5, "mm"))
+
+```
+
+Columns are clustered
+
+
+```{r fig.width=8, fig.height=8}
+
+Heatmap(t(scale(dta[,1:26])),
+        # column_title = "Samples are clustered",
+        clustering_method_columns = "ward.D2",
+        clustering_method_rows = "ward.D2",
+        clustering_distance_rows = "pearson",
+        clustering_distance_columns = "pearson",
+        col = col_fun,
+        # top_annotation = sample_annot,
+        right_annotation = protein_annot,
+        column_split = dta$disease,
+        show_column_dend = FALSE,
+        column_gap = unit(5, "mm"),
+        heatmap_legend_param = list(title = "")
+        )
+```
+
+
+## IPF versus normal
+Restricted to plate 1 based on above results.
+The follow model was run to test for statistical significance:
+
+log2(protein+0.1) ~ disease + (1|Subject.ID)
+
+The FDR values are given below for all proteins. The median for nearly all the proteins is numerically higher in the IPF samples than the normal samples. However, 9 proteins meet a FDR cutoff of 0.05.
+
+Results are grouped into the three biologal function groups: epithelial damage, ECM remodeling, and inflammation.
+
+
+```{r warning=FALSE}
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "disease + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta,  plate==1), x) %>% anova() %>% broom::tidy()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+# reformat to a data.frame and add FDR
+all_stats_disease <- bind_rows(all_tests, .id = "protein") %>% 
+  group_by(term) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup()
+# also add the effect size?
+
+# Print for report
+all_stats_disease %>% 
+  select(protein, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.05)
+```
+
+Filter to only those that make FDR 0.05 cutoff
+```{r}
+# create consistent color shapes for figures
+color_scale1 <- c("Control" = "gray",
+                 "IPF" = "deepskyblue4")
+shape_scale1 <- c("Control" = 19,
+                 "IPF" = 17)
+color_scale2 <- c(
+                 "None" = "#005f73",
+                 "Pirfenidone" = "#ee9b00",
+                 "Nintedanib" = "#ae2012")
+shape_scale2 <- c(
+                 "None" = 18,
+                 "Pirfenidone" = 17,
+                 "Nintedanib" = 15)
+sig_prots <- all_stats_disease$protein[all_stats_disease$fdr<0.05]
+plots <- lapply(1:length(biol_groups), function(x){
+  if (length(intersect(biol_groups[[x]], sig_prots)) >0)
+    make_plot(filter(dta, plate==1),
+              n_facet_rows = 1,
+              my_variable = disease,
+              color_var = disease,
+              plot_vars = intersect(biol_groups[[x]], sig_prots)) + 
+    scale_color_manual(values = color_scale1) + 
+    scale_shape_manual(values = shape_scale1) +
+    labs(x = NULL, y = NULL, 
+         title = names(biol_groups)[[x]], 
+         subtitle = NULL,
+         color = NULL,
+         shape = NULL)
+})
+
+empty_plot <- ggplot()
+
+```
+
+```{r fig2a, fig.height=8, fig.width=8}
+plots[[1]] / plots[[2]] / ((plots[[4]] + theme(legend.position = "none")) + ((plots[[3]]+ theme(legend.position = "none")) + empty_plot))
+```
+
+## By current treatment (all visits)
+Focused only on IPF patients.
+
+This model was run to test for statistical significance:
+
+log2(protein+0.1) ~ Gender + Age.at.enrollment + factor(plate) + current_rx_simple + (1|Subject.ID)
+
+For the data visualization, we can use a dataset that was adjusted for plate (but that will only show IPF patients).
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "Gender + Age.at.enrollment + factor(plate) + current_rx_simple + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  # run_model(filter(dta,  disease=="IPF"), x) %>% anova() %>% broom::tidy()
+  run_model(filter(dta, disease=="IPF"), x) %>% 
+    emmeans(pairwise ~current_rx_simple) %>% .$contrasts %>% as.data.frame()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+all_stats_rx <- bind_rows(all_tests, .id = "protein") %>% 
+  # group_by(term) %>% 
+  group_by(contrast) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup()
+
+all_stats_rx %>% 
+  select(protein,contrast, fdr) %>% 
+  arrange(fdr)  %>% 
+  filter(fdr<0.05)
+
+```
+
+```{r fig.height=3, fig.width=6}
+sig_prots <- all_stats_rx$protein[all_stats_rx$fdr<0.05]
+
+plots <- lapply(1:length(biol_groups), function(x){
+  if (length(intersect(biol_groups[[x]], sig_prots)) >0)
+  make_plot(filter(dta_adjusted, disease=="IPF"),
+      transform = F, 
+      n_facet_rows = 1,
+          my_variable = treatment_simple, 
+          color_var = current_rx_simple,
+          plot_vars = intersect(biol_groups[[x]], sig_prots)) + 
+    theme(axis.text.x = element_blank()) +
+    scale_color_manual(values = color_scale2) + 
+    scale_shape_manual(values = shape_scale2) +
+    labs(x = NULL, 
+         y = NULL, #"Adjusted Protein Conc.",
+         title=names(biol_groups[x]),
+         subtitle = NULL,
+         color = "Treatment",
+         shape = "Treatment")
+})
+```
+
+```{r fig2b, fig.height=6, fig.width=6}
+plots[[1]] / (plots[[2]] + theme(legend.position = "none"))
+```
+
+
+```{r eval=FALSE}
+# By dose, did not end up using (eval=FALSE)
+
+sig_prots <- all_stats_rx$protein[all_stats_rx$fdr<0.05]
+
+plots <- lapply(1:length(biol_groups), function(x){
+  if (length(intersect(biol_groups[[x]], sig_prots)) >0)
+  make_plot(dta_adjusted,
+      transform = F, 
+      n_facet_rows = 1,
+          my_variable = current_rx_dose, 
+          color_var = current_rx_simple,
+          plot_vars = intersect(biol_groups[[x]], sig_prots)) + 
+    theme(axis.text.x = element_text(angle=45, hjust=1)) +
+    # theme(axis.text.x = element_blank()) +
+    scale_color_manual(values = color_scale2) + 
+    scale_shape_manual(values = shape_scale2) +
+    labs(y = NULL, #"Adjusted Protein Conc.",
+         color = "Treatment",
+         shape = "Treatment",
+         x = NULL, title=names(biol_groups)[x],
+         subtitle = NULL)
+})
+```
+
+```{r eval=FALSE, fig.height=6, fig.width=6}
+plots[[1]] / (plots[[2]] + theme(legend.position = "none"))
+```
+
+
+## By smoking status
+Focused only on IPF patients. We have an "Current.Smoker" and "Ex.smoker" variables. However, all subjects are not current smokers.
+
+This model was run to test for statistical significance:
+
+log2(protein+0.1) ~ Gender + Age.at.enrollment + factor(plate) + current_rx_simple +Ex.smoker +(1|Subject.ID)
+
+No proteins were significantly associated with former smoking status. Note that ex-smoking status is associated with current treatment. Pirfenidone treated subjects are enriched for former smokers.
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+             "~", "Gender + Age.at.enrollment + factor(plate) + current_rx_simple +Ex.smoker + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta,  disease=="IPF"), x) %>% anova() %>% broom::tidy()
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+all_stats_smoke <- bind_rows(all_tests, .id = "protein") %>% 
+  group_by(term) %>% 
+  mutate(fdr = p.adjust(p.value, method = "fdr")) %>% 
+  ungroup()
+
+all_stats_smoke %>% 
+  filter(term=="Ex.smoker") %>% 
+  select(protein,term, fdr) %>% 
+  arrange(fdr)  %>% 
+  filter(fdr<0.05)
+```
+
+Nothing was statistically significant.
+
+
+
+## Before and after transplants
+*(See Example patients section for more)*
+
+Three subjects underwent a lung transplant and had samples from visits both prior and after the transplant. Shown are the FEV1 percent predicted and four proteins of interest for these three patients. 
+
+
+```{r}
+patient_labels <- c("patient 1", "patient 2", "patient 3")
+names(patient_labels) <- c("8017","8028","8029")
+
+#Interpolate the y data for the time of transplant
+
+
+plot_over_time <- function(data, patient.ids){
+  plot_vars <- c("POSTN","SPD","SPA1","ICAM")
+  # Get min and max values
+  mylimits <- data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  group_by(variable) %>% 
+  summarise(min_val=min(value, na.rm = T), 
+            max_val = max(value, na.rm = T),
+            .groups = "drop") 
+  ff <- with(mylimits,
+           data.frame(value=c(min_val,max_val),
+                      variable=c(variable,variable)))
+aplot <- data %>% 
+  filter(Subject.ID %in% patient.ids) %>% 
+  mutate(mos_from_visit1 = days_from_visit1/30.417,
+         trans_from_visit1 = trans_from_visit1/30.417) %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value, t_label,
+         trans_from_visit1, mos_from_visit1, current_rx_simple) %>% 
+  group_by(Subject.ID, variable) %>% 
+  mutate(transplant_y = approx(x = mos_from_visit1, 
+                               y = value, 
+                               xout = trans_from_visit1[1])$y) %>%
+  ungroup() %>% 
+  left_join(select(distinct(ff, variable, .keep_all=T),
+                   variable, min_value=value) )%>% 
+  filter(!is.na(value)) %>% 
+  ggplot(aes(y=log2(value+0.1), x=mos_from_visit1)) +
+  geom_point( aes(color = t_label),
+             show.legend = T) + 
+  # geom_point(aes(x = trans_from_visit1, y = log2(transplant_y)+0.3), 
+  #            pch = 6, size = 4,
+  #            show.legend = F) +
+  geom_line(aes(group = Subject.ID, color = t_label)) +
+  scale_color_manual(values = c("-" = "gray40",
+                                "after transplant" = "goldenrod2")) + 
+  # Tricky to say how to best set scales...
+  facet_grid(variable~Subject.ID, 
+             switch = "y",
+             scales="free", 
+             labeller = labeller(Subject.ID = patient_labels)) + 
+  labs(color = "",
+       x = "Time since first visit (months)")+
+  theme_classic2() + 
+  theme(strip.background = element_rect(color = NA)) +
+  # theme(axis.text.x = element_text(angle=45, hjust=1, size = 6)) + 
+  geom_point(data=ff, x = NA) + 
+  # geom_point(aes(x = transplant_date, y=log2(min_value)), pch = 17) + 
+  NULL
+
+plot_vars <- c("FEV1_perc_pred")
+bplot <- data %>% 
+  filter(Subject.ID %in% patient.ids) %>%
+  mutate(mos_from_visit1 = days_from_visit1/30.417,
+         trans_from_visit1 = trans_from_visit1/30.417) %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value, t_label,
+         trans_from_visit1, mos_from_visit1, current_rx_simple) %>% 
+  group_by(Subject.ID, variable) %>% 
+  mutate(transplant_y = approx(x = mos_from_visit1, 
+                               y = value, 
+                               xout = trans_from_visit1[1])$y) %>%
+  ungroup() %>% 
+  filter(!is.na(value)) %>% 
+  ggplot(aes(y=value, x=mos_from_visit1)) +
+  geom_point( aes(color = t_label),
+             show.legend = T) + 
+  # geom_point(aes(x = trans_from_visit1, y = transplant_y+3), 
+  #            pch = 6, size = 4,
+  #            show.legend = F) +
+  geom_line(aes(group = Subject.ID, color = t_label))+
+  scale_color_manual(values = c("-" = "gray40",
+                                "after transplant" = "goldenrod2")) + 
+  facet_grid(variable~Subject.ID, 
+             scales="free", 
+             switch = "y",
+             labeller = labeller(Subject.ID = patient_labels)) + 
+  scale_y_continuous(limits=c(0, 110)) + 
+  labs(
+       color = "",
+       x = "Time since first visit (months)"
+       )+
+  theme_classic2() +
+  theme(strip.background = element_rect(color = NA)) +
+  # theme(axis.text.x = element_text(angle=45, hjust=1))+ 
+  # geom_point(aes(x = transplant_date), y = 5, pch = 17)
+  NULL
+
+list(a = aplot, b = bplot)
+}
+```
+
+```{r}
+transplant_plots <- 
+  plot_over_time(
+    dta,
+    patient.ids = c("8017","8028","8029"))
+```
+
+```{r fig3b, fig.width=7, fig.height=7}
+transplant_plots$a 
+```
+
+```{r fig.width=7, fig.height=3}
+transplant_plots$b
+```
+
+
+
+
+## Stability of biomarkers over all visits
+
+Our initial observation is that some of the biomarkers are stable over time in patients. Some of these visits span multiple years.
+
+Here, we will use the data that was adjusted for plate. When we do this, we cannot plot the median value for Control samples.
+
+### Not normalized to baseline
+```{r overtime_nonnorm, fig.height=10, fig.width=8}
+
+plot_vars <- names(dta)[1:26]
+dta_medians <- dta %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  group_by(variable) %>% 
+  mutate(median_control = median(value[disease=="Control"])) %>% 
+  ungroup() %>% 
+  distinct( variable, median_control) %>% 
+  mutate(log2_median= log2(median_control+0.1))
+
+# When using adjusted data, already log2-transformed
+dta_adjusted %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  disease,
+         Visit, days_from_visit1, 
+         t_label, current_rx_simple) %>% 
+  filter(!is.na(Visit),
+         !is.na(value),
+         disease=="IPF") %>%
+  mutate(mos_from_visit1 = days_from_visit1/30.417,
+         variable = factor(variable, levels = unlist(biol_groups))) %>% 
+  ggplot(aes(y=value, x=mos_from_visit1)) +
+  geom_line(aes(group = Subject.ID,
+                color = t_label),
+            alpha=0.6) + 
+  geom_point(aes(color = t_label),
+             size =0.5,
+             na.rm = TRUE,
+             show.legend = T,
+             alpha=0.7) +
+  scale_color_manual(values = c("-" = "gray40",
+                                "after transplant" = "goldenrod2")) + 
+  facet_wrap(~ variable,
+             scales = "free",
+             nrow = 5) + 
+  labs(title = NULL, 
+       color = "",
+       x = "Time since first visit (months)",
+       y = "Adjusted values") +
+  theme_classic() + 
+  theme(legend.position = c(0.9, 0.1),
+        panel.spacing = unit(0.5,"line"),
+        strip.background = element_rect(color = NA))
+
+```
+
+### Normalized to baseline
+Another version of these plots, but for each patient, we subtract the baseline value.
+
+```{r overtime_norm, fig.height=10, fig.width=8}
+
+plot_vars <- names(dta)[1:26]
+
+# When using adjusted data, already log2-transformed
+dta_adjusted %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  disease,
+         Visit, days_from_visit1, 
+         t_label, current_rx_simple) %>% 
+  filter(!is.na(Visit),
+         !is.na(value),
+         disease=="IPF") %>% 
+  group_by(Subject.ID, variable) %>% 
+  mutate(Visit = as.numeric(Visit),
+         value_norm = value - value[Visit==min(Visit)]) %>% 
+  mutate(mos_from_visit1 = days_from_visit1/30.417,
+         variable = factor(variable, levels = unlist(biol_groups))) %>% 
+  ggplot(aes(y=value_norm, x=mos_from_visit1)) +
+  geom_line(aes(group = Subject.ID, color = t_label), alpha=0.6) + 
+  geom_point(aes(color = t_label), size =0.5,
+             na.rm = TRUE, show.legend = T, alpha=0.7) +
+  scale_color_manual(values = c("-" = "gray40",
+                                "after transplant" = "goldenrod2")) + 
+  facet_wrap(~variable,
+             scales = "free",
+             nrow = 5) + 
+  theme_minimal() +
+  labs(color = "",
+       x = "Time since first visit (months)",
+       y = "Adjusted values (norm to first visit)") +
+  theme_classic() + 
+  theme(legend.position = c(0.9, 0.1),
+        panel.spacing = unit(0.5,"line"),
+        strip.background = element_rect(color = NA))
+
+```
+
+
+```{r figure3, fig.height=3, fig.width=6}
+
+plot_vars <- c("SPD","SPA1","POSTN","ICAM","IL8")
+
+# When using adjusted data, already log2-transformed
+dta_adjusted %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  disease,
+         Visit, days_from_visit1, 
+         t_label, current_rx_simple) %>% 
+  filter(!is.na(Visit),
+         !is.na(value),
+         disease=="IPF") %>% 
+  group_by(Subject.ID, variable) %>% 
+  mutate(Visit = as.numeric(Visit),
+         value_norm = value - value[Visit==min(Visit)]) %>% 
+  mutate(mos_from_visit1 = days_from_visit1/30.417,
+         variable = factor(variable, levels = unlist(biol_groups))) %>% 
+  ggplot(aes(y=value_norm, x=mos_from_visit1)) +
+  geom_line(aes(group = Subject.ID, color = t_label), alpha=0.6) + 
+  geom_point(aes(color = t_label), size =0.5,
+             na.rm = TRUE, show.legend = T, alpha=0.7) +
+  scale_color_manual(values = c("-" = "gray40",
+                                "after transplant" = "goldenrod2")) + 
+  facet_wrap(~variable,
+             scales = "free",
+             nrow = 1) + 
+  theme_minimal() +
+  labs(color = "",
+       x = "Time since first visit (months)",
+       y = "Adjusted values (norm to first visit)") +
+  theme_classic() + 
+  theme(legend.position = "top",
+        panel.spacing = unit(0.5,"line"),
+        strip.background = element_rect(color = NA))
+
+```
+<!-- One way to quantify variability is the coefficient of variation. Here we calculate the mean % CV for each marker across the patients with 3+ samples. -->
+
+<!-- ```{r} -->
+<!-- calc_cv <- function(dta){ -->
+<!--   abs((sd(dta, na.rm = T)/mean(dta, na.rm=T))*100) -->
+<!-- } -->
+<!-- plot_vars <- names(dta)[c(1:9,11:18,20,21,22,23,61:65)] -->
+<!-- dta %>%  -->
+<!--   select(all_of(plot_vars), Subject.ID) %>%  -->
+<!--   group_by(Subject.ID) %>%  -->
+<!--   mutate(n_visits = n()) %>%  -->
+<!--   filter(n_visits > 2) %>%  -->
+<!--   group_by(Subject.ID) %>%  -->
+<!--   summarise_if(is.numeric, calc_cv) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   select(-Subject.ID, -n_visits) %>%  -->
+<!--   summarise_all(median, na.rm=T) %>%  -->
+<!--   t()%>% as.data.frame() %>%  -->
+<!--   rename(med_perc_cv = V1) %>%  -->
+<!--   arrange((med_perc_cv)) -->
+
+
+<!-- ``` -->
+
+<!-- This was repeated to exclude the subjects with a lung transplant. -->
+
+<!-- ```{r} -->
+<!-- plot_vars <- names(dta)[c(1:9,11:18,20,21,22,23,61:65)] -->
+<!-- dta %>%  -->
+<!--   filter(is.na(transplant_date)) %>%  -->
+<!--   select(all_of(plot_vars), Subject.ID) %>%  -->
+<!--   group_by(Subject.ID) %>%  -->
+<!--   mutate(n_visits = n()) %>%  -->
+<!--   filter(n_visits > 2) %>%  -->
+<!--   group_by(Subject.ID) %>%  -->
+<!--   summarise_if(is.numeric, calc_cv) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   select(-Subject.ID, -n_visits) %>%  -->
+<!--   summarise_all(median, na.rm=T) %>%  -->
+<!--   t()%>% as.data.frame() %>%  -->
+<!--   rename(med_perc_cv = V1) %>%  -->
+<!--   arrange((med_perc_cv)) -->
+<!-- ``` -->
+
+## Other variables
+We need to think more about the clinical disease measurements, such as FEV1, FVC, DLCO. We have the percent of predicted values (0-100 %) and the raw values for FEV1 and FVC.
+
+Measured with spirometer:
+
++ FEV1: forced expiratory volume in 1 second
++ FVC: forced vital capacity
++ Could evaluate the FEV1/FVC ratio
+
+From wikipedia (https://en.wikipedia.org/wiki/FEV1/FVC_ratio): Normal values are approximately 75%. Predicted normal values can be calculated online and depend on age, sex, height, and ethnicity as well as the research study that they are based upon.
+
+DLCO: Diffusing capacity for carbon monoxide
+
+We would need to decide how to summarize these variables for each patient and how to handle missing values.
+
+This below visualization of data missingness is for IPF patients (no normals).
+
+```{r fig.width=8,fig.height=6}
+dta %>% 
+  filter(disease=="IPF") %>% 
+  select(DLCO.ml_mmHg_min_perc_pred,
+                        FEV1_L,
+                        FEV1_perc_pred, 
+                        FVC_L,
+                        FVC_perc_pred) %>% 
+  naniar::vis_miss()
+```
+
+We looked at the distribution of pulmonary variables by treatment:
+
+```{r}
+plot_vars <- c("DLCO.ml_mmHg_min_perc_pred",
+               "FEV1_L","FVC_L",
+               "FEV1_perc_pred",
+               "FVC_perc_pred")
+dta %>% 
+  tidyr::pivot_longer(all_of(plot_vars), names_to = "variable") %>% 
+  select(Subject.ID, variable, value, plate, visit_date, 
+         current_rx_dose,
+         current_rx_simple) %>% 
+  filter(!is.na(value)) %>% 
+  ggplot(aes(y=value, x=current_rx_dose)) +
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height=0,width=0.2, aes(color = current_rx_simple)) + 
+  facet_wrap(~variable, scales = "free", nrow = 2) + 
+  scale_y_continuous(limits=c(0,NA)) + 
+  labs(title = paste("Clinical metrics by treatment"),
+       x = "Current treatment dose")+
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+```{r echo=FALSE}
+#Plot each by some variable ----
+make_plot_cont <- function(my_data, 
+                      my_variable, #x=axis
+                      plot_vars, #y-axis
+                      color_var, #color
+                      transform=TRUE){
+  my_variable <- enquo(my_variable)
+  color_var <- enquo(color_var)
+  if(transform){
+    my_data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  !!my_variable, !!color_var) %>% 
+  filter(!is.na(!!my_variable), !is.na(value)) %>% 
+  ggplot(aes(y=log2(value+0.1), x=!!my_variable)) +
+  geom_point(aes(color = !!color_var), show.legend = F) + 
+  facet_wrap(~variable, scales = "free") + 
+  labs(title = paste0(rlang::as_name(my_variable))) 
+    
+  } else{
+    my_data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  !!my_variable, disease) %>% 
+  filter(!is.na(!!my_variable), !is.na(value)) %>% 
+  ggplot(aes(y=value, x=!!my_variable)) +
+  geom_point(aes(color = !!color_var), show.legend = F) + 
+  geom_jitter(height = 0, width=0.2, aes(color = disease),
+              na.rm = TRUE, show.legend = F) + 
+  # stat_cor(cor.coef.name = "rho", method = "spearman") + 
+  facet_wrap(~variable, scales = "free") + 
+        labs(title = paste0(rlang::as_name(my_variable))) 
+  }
+}
+```
+
+
+Ran models of the form:
+log2(protein + 0.1) ~ current_rx_simple + factor(plate) + FEV1_perc_pred + (1|Subject.ID)
+
+and adjusted the p-vlaues for FDR. Here, I will just show the interesting results.
+
+### DCLO
+
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+    "~", "current_rx_simple + factor(plate) + DLCO.ml_mmHg_min_perc_pred + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta,  disease=="IPF"), x) %>% summary() %>% 
+    .$coefficients %>% as.data.frame() %>% .["DLCO.ml_mmHg_min_perc_pred",]
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+all_stats_dlco <- bind_rows(all_tests, .id = "protein") %>%
+  mutate(fdr = p.adjust(`Pr(>|t|)`, method = "fdr")) 
+
+all_stats_dlco %>% 
+  select(protein,Estimate, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.1)
+```
+
+*No proteins were significant for DLCO.ml_mmHg_min_perc_pred*
+
+### FVC
+```{r warning=FALSE}
+
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+    "~", "current_rx_simple + factor(plate) + FVC_perc_pred + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta,  disease=="IPF"), x) %>% summary() %>% 
+    .$coefficients %>% as.data.frame() %>% .["FVC_perc_pred",]
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+all_stats_fvc <- bind_rows(all_tests, .id = "protein") %>%
+  mutate(fdr = p.adjust(`Pr(>|t|)`, method = "fdr")) 
+
+all_stats_fvc %>% 
+  select(protein,Estimate, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.1)
+```
+
+Plots of adjusted data
+
+```{r fig.height=5, fig.width=8}
+plot_vars <- all_stats_fvc$protein[all_stats_fvc$fdr<0.05]
+dta_adj_names <- dta_adjusted
+names(dta_adj_names) <- make.names(names(dta_adj_names))
+
+make_plot_cont(filter(dta_adj_names, disease=="IPF"), 
+          my_variable = FVC_perc_pred, 
+          color_var = disease,
+          plot_vars = plot_vars)+ 
+  theme_minimal() + 
+  geom_smooth(method = "lm", se = F, color = "gray") + 
+  labs(y = "Adjusted data",
+       x = "FVC (pred. %)")
+```
+
+### FEV1
+```{r warning=FALSE}
+run_model <- function(data, prot_var){
+  lmer(paste("log2(",prot_var,"+0.1)", 
+    "~", "current_rx_simple + factor(plate) + FEV1_perc_pred + (1|Subject.ID)"), 
+       data = data)
+
+}
+
+all_tests <- lapply(names(dta)[c(1:26)], function(x)
+  run_model(filter(dta,  disease=="IPF"), x) %>% summary() %>% 
+    .$coefficients %>% as.data.frame() %>% .["FEV1_perc_pred",]
+)
+names(all_tests) <- names(dta)[c(1:26)]
+
+all_stats_fev <- bind_rows(all_tests, .id = "protein") %>%
+  mutate(fdr = p.adjust(`Pr(>|t|)`, method = "fdr")) 
+
+all_stats_fev %>% 
+  select(protein,Estimate, fdr) %>% 
+  arrange(fdr) %>% 
+  filter(fdr<0.1)
+```
+
+```{r fig.height=5, fig.width=8}
+plot_vars <- all_stats_fev$protein[all_stats_fev$fdr<0.05]
+
+make_plot_cont(filter(dta_adj_names, disease=="IPF"), 
+          my_variable = FEV1_perc_pred, 
+          color_var = disease,
+          plot_vars = plot_vars)+ 
+  theme_minimal() + 
+  geom_smooth(method = "lm", se = F, color = "gray") + 
+  labs(y = "Adjusted data",
+       x = "FEV1 (pred. %)")
+```
+
+
+\newpage
+
+# Example patients
+I wanted to add some example plots for some notable patients. Note that for the biomarker plots, the y-axis limits for each protein are set the the min/max for the entire dataset. That way you can gauge whether a change is relatively large or small.
+
+Subject 8017 had 8 visits and a lung transplant between the 2nd and 3rd visits (2017-04-12).
+
+```{r}
+plot_over_time <- function(data, patient.id){
+  plot_vars <- names(data)[1:26]
+  # Get min and max values
+  mylimits <- data %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  group_by(variable) %>% 
+  summarise(min_val=min(value, na.rm = T), 
+            max_val = max(value, na.rm = T),
+            .groups = "drop") 
+  ff <- with(mylimits,
+           data.frame(value=c(min_val,max_val),
+                      variable=c(variable,variable)))
+aplot <- data %>% 
+  filter(Patient.ID == patient.id) %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  visit_date, current_rx_simple) %>% 
+  filter(!is.na(value)) %>% 
+  ggplot(aes(y=log2(value+0.1), x=visit_date)) +
+  geom_point( aes(color = current_rx_simple),
+             show.legend = T) + 
+  geom_line(aes(group = Subject.ID))+
+  # Tricky to say how to best set scales...
+  facet_wrap(~variable, scales = "free_y") + 
+  labs(title = paste("Biomarkers for", patient.id),
+       color = "Treatment",
+       x = "Visit Date")+
+  theme(axis.text.x = element_text(angle=45, hjust=1, size = 6)) + 
+  geom_point(data=ff,x = NA)
+
+plot_vars <- c("DLCO.ml_mmHg_min_perc_pred",
+               "FEV1_perc_pred",
+               "FVC_perc_pred")
+bplot <- data %>% filter(Patient.ID == patient.id) %>% 
+  tidyr::pivot_longer(plot_vars, names_to = "variable") %>% 
+  select(Subject.ID, variable, value,  visit_date, current_rx_simple) %>% 
+  filter(!is.na(value)) %>% 
+  ggplot(aes(y=value, x=visit_date)) +
+  geom_point( aes(color = current_rx_simple),
+             show.legend = T) + 
+  geom_line(aes(group = Subject.ID))+
+  facet_wrap(~variable, scales = "free_y", ncol = 1) + 
+  scale_y_continuous(limits=c(0,110)) + 
+  labs(title = paste("Clinical metrics for", patient.id),
+       color = "Treatment",
+       x = "Visit Date")+
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+list(a = aplot, b = bplot)
+}
+```
+
+```{r fig.height=8, fig.width=8}
+dta$visit_date <- as.Date(dta$visit_date)
+
+both_plots <- plot_over_time(dta, "BMSP8017")
+both_plots$a
+both_plots$b
+```
+
+
+Subject 8029 had 8 visits and a lung transplant between the 5th and 6th visits (2018-03-21).
+
+```{r fig.height=8, fig.width=8, warning=FALSE}
+both_plots <- plot_over_time(dta, "BMSP8029")
+both_plots$a
+both_plots$b
+```
+
+
+Subject 8028 had 5 visits and a lung transplant one day after visit 1.
+
+```{r fig.height=8, fig.width=8, warning=FALSE}
+both_plots <- plot_over_time(dta, "BMSP8028")
+both_plots$a
+both_plots$b
+```
+
+
+Subject 8002 had 4 visits and then passed away.
+
+```{r fig.height=8, fig.width=8}
+both_plots <- plot_over_time(dta, "BMSP8002")
+both_plots$a
+both_plots$b
+```
+
+Subject 8000 had 8 visits (no transplant, not deceased).
+
+```{r fig.height=8, fig.width=8}
+both_plots <- plot_over_time(dta, "BMSP8000")
+both_plots$a
+both_plots$b
+```
+
+# Save derived files
+For future work, we may want to start with the "cleaned" data created here. We save these files out.
+
+```{r write_out}
+saveRDS(dta, here::here('data/analysis_data_cleaned.Rds'))
+saveRDS(dta_adjusted, here::here('data/analysis_data_cleaned_adjusted.Rds'))
+
+write.csv(dta, row.names = F,
+          here::here('data/analysis_data_cleaned.csv'))
+write.csv(dta_adjusted, row.names = F,
+          here::here('data/analysis_data_cleaned_adjusted.csv'))
+```
+
+# Supporting Information
+
+
+## Environment
+
+```{r environment, eval = TRUE}
+sessionInfo()
+```
+
+Time to process this report: `r format(Sys.time() - startTime, digits = 2)`
+
+**End of analysis report**
+  
+  

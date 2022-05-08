@@ -169,7 +169,8 @@ plot_gtex_dots <- function(input_data, input_genes) {
   plot_data <- input_data %>%
     dplyr::filter(description %in% input_genes) %>%
     # select only median rows
-    dplyr::select(gene = description, adipose_subcutaneous:whole_blood) %>%
+    dplyr::select(gene = description,
+                  adipose_subcutaneous:whole_blood) %>%
     dplyr::select(-cells_cultured_fibroblasts,
                   -cells_ebv_transformed_lymphocytes) %>%
     # pivot to long
@@ -191,7 +192,7 @@ plot_gtex_dots <- function(input_data, input_genes) {
     geom_hline(yintercept = log2(2), color = "seagreen",
                size = 0.5, linetype = "dashed") +
     labs(x = NULL, y = expression(log[2](TPM + 1))) +
-    theme_minimal(base_family = "Avenir") +
+    theme_minimal() +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
           legend.position = "top",
           panel.grid.major.x = element_blank() )
@@ -217,14 +218,24 @@ plot_sc_diff <- function(input_data) {
                 height = 0, width = 0.1, shape = 1) +
     # geom_text(aes(label = cluster), size = 2, angle = 45) +
     scale_size(range = c(1,3)) +
+    scale_color_manual(values = c("immune" = "gray30",
+                                  "fibroblasts" = "#ae2012",
+                                  "endothelial" = "#ee9b00",
+                                  "epithelial" = "#005f73")) +
     coord_flip() +
     labs(x = NULL,
          y = "Difference IPF vs control",
          size = bquote("-"~log[10]*"(adj. p)"),
          color = "Cell type"
     ) +
-    theme_minimal(base_family = "Avenir") +
+    theme_minimal() + # pick font
     theme(legend.position = "right",
           panel.grid.major.y = element_blank() )
 
+}
+
+save_return_filename <- function(plot_object, path_to_save,
+                                 ...) {
+  ggsave(plot = plot_object, filename = path_to_save, ...)
+  return(path_to_save)
 }
