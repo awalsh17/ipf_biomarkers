@@ -218,10 +218,10 @@ plot_sc_diff <- function(input_data) {
                 height = 0, width = 0.1, shape = 1) +
     # geom_text(aes(label = cluster), size = 2, angle = 45) +
     scale_size(range = c(1,3)) +
-    scale_color_manual(values = c("immune" = "gray30",
+    scale_color_manual(values = c("endothelial" = "gray80",
                                   "fibroblasts" = "#ae2012",
-                                  "endothelial" = "#ee9b00",
-                                  "epithelial" = "#005f73")) +
+                                  "epithelial" = "#ee9b00",
+                                  "immune" = "#005f73")) +
     coord_flip() +
     labs(x = NULL,
          y = "Difference IPF vs control",
