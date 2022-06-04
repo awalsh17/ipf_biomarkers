@@ -7,6 +7,8 @@ tar_option_set(packages = c(
 ))
 source("code/functions.R")
 elevated_genes <- c("SFTPD",
+                    "MUC16",
+                    "KRT19",
                     "SFTPA1",
                     "MMP7",
                     "CCL22",
@@ -81,9 +83,11 @@ list(
              plot_sc_diff(input_data = haberman_diff_elevated)),
   tar_target(plot_haberman_receptors,
              plot_sc_diff(input_data = haberman_diff_receptors)),
+  # with re-run MAST results
   tar_target(plot_elevated_haberman,
              haberman_diff %>%
                dplyr::filter(gene %in% c(elevated_genes)) %>%
+               dplyr::filter(p_val_adj < 0.05) %>%
                dplyr::rename(cluster = cell, avg_diff = avg_log2FC) %>%
                dplyr::mutate(log = -log10(p_val_adj), # in this analysis, control v IPF
                              avg_diff = -avg_diff) %>%
@@ -92,6 +96,7 @@ list(
   tar_target(plot_receptors_haberman,
              haberman_diff %>%
                dplyr::filter(gene %in% c(unique(receptors$target_genesymbol))) %>%
+               dplyr::filter(p_val_adj < 0.05) %>%
                dplyr::rename(cluster = cell, avg_diff = avg_log2FC) %>%
                dplyr::mutate(log = -log10(p_val_adj), # in this analysis, control v IPF
                              avg_diff = -avg_diff) %>%
