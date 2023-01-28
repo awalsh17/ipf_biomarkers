@@ -1043,6 +1043,40 @@ plots <- lapply(1:length(biol_groups), function(x) {
 plots[[1]] / (plots[[2]] + theme(legend.position = "none"))
 ```
 
+Created a second version as an option with the two treatments split out.
+```{r fig.height=3, fig.width=6}
+sig_prots <- all_stats_rx$protein[all_stats_rx$fdr < 0.05]
+
+plots <- lapply(1:length(biol_groups), function(x) {
+  if (length(intersect(biol_groups[[x]], sig_prots)) > 0) {
+    make_plot(filter(dta_adjusted, disease == "IPF"),
+      transform = F,
+      n_facet_rows = 1,
+      my_variable = current_rx_simple,
+      color_var = current_rx_simple,
+      plot_vars = intersect(biol_groups[[x]], sig_prots)
+    ) +
+      theme(panel.grid = ggplot2::element_blank()) + 
+      theme(axis.line = ggplot2::element_line(color = "black")) +
+      theme(axis.text.x = element_blank()) +
+      scale_color_manual(values = color_scale2) +
+      scale_shape_manual(values = shape_scale2) +
+      labs(
+        x = NULL,
+        y = NULL, # "Adjusted Protein Conc.",
+        title = names(biol_groups[x]),
+        subtitle = NULL,
+        color = "Treatment",
+        shape = "Treatment"
+      )
+  }
+})
+```
+
+```{r fig2b_alt, fig.height=6, fig.width=6}
+plots[[1]] / (plots[[2]] + theme(legend.position = "none"))
+```
+
 
 ```{r eval=FALSE}
 # By dose, did not end up using (eval=FALSE)
