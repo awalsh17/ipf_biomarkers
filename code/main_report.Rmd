@@ -490,6 +490,45 @@ table_one %>%
   gt::gtsave(filename = here::here("results/table_one.png"))
 ```
 
+Created a second version of the "table one" with statistics for IPF patients. 
+```{r}
+table_two <- dta %>%
+  filter(disease=="IPF") %>%
+  group_by(Subject.ID, disease) %>%
+  mutate(visits = n()) %>%
+  arrange(Visit) %>%
+  summarise(
+    "Treatment (first visit)" = current_rx_simple[1],
+    "Number of visits" = visits[1],
+    "Race" = race[1],
+    Gender = Gender[1],
+    "Age at enrollment" = Age.at.enrollment[1],
+    "Ex-smoker" = Ex.smoker[1],
+    # "FEV1 (%, first available)" = na.omit(FEV1_perc_pred)[1],
+    # "FVC (%, first available)" = na.omit(FVC_perc_pred)[1],
+    # "DLCO (mL/min/mm Hg %, first available)" = na.omit(DLCO.ml_mmHg_min_perc_pred)[1],
+    "FEV1 (%)" = (FEV1_perc_pred)[1],
+    "FVC (%)" = (FVC_perc_pred)[1],
+    "DLCO (mL/min/mm Hg %)" = (DLCO.ml_mmHg_min_perc_pred)[1],
+    "Received transplant" = any(!is.na(transplant_date)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    `Treatment (first visit)` = factor(`Treatment (first visit)`),
+    `Ex-smoker` = factor(`Ex-smoker`, levels = c("No", "Yes")),
+    `Number of visits` = ifelse(`Number of visits` >= 4, "4+", `Number of visits`)
+  ) %>%
+  distinct(Subject.ID, .keep_all = T) %>%
+  dplyr::select(-Subject.ID, -disease) %>%
+  tbl_summary(by = `Treatment (first visit)`) %>% 
+  add_p()
+
+table_two %>%
+  as_gt() %>%
+  gt::gtsave(filename = here::here("results/table_two.png"))
+```
+
+
 We also have information for the subjects that did not continue in the study due to death or other reasons. (These numbers are on the entire 50 patient cohort, only 48 of these had protein data.)
 
 + 11/50 subjects died - we could do a survival analysis to examine prognostic factors if we had more information on the date of death
