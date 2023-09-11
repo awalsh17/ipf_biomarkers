@@ -1,0 +1,27 @@
+﻿Label,gene_symbol,Uniprot,uniprot_gene_name,uniprot_short_name,uniprot_recommended,clean_label
+TARC,CCL17,Q92583,CCL17,NA,C-C motif chemokine 17,TARC
+Mip4,CCL18,P55774,CCL18,NA,C-C motif chemokine 18,MIP4
+MCP-1,CCL2,P13500,CCL2,NA,C-C motif chemokine 2,MCP1
+MDC,CCL22,O00626,CCL22,NA,C-C motif chemokine 22,MDC
+MCP-3_CCL7,CCL7,P80098,CCL7,NA,C-C motif chemokine 7,CCL7
+YKL40,CHI3L1,P36222,CHI3L1,NA,Chitinase-3-like protein 1,YKL40
+IP-10,CXCL10,P02778,CXCL10,NA,C-X-C motif chemokine 10,IP10
+SDF-1ab,CXCL12,P48061,CXCL12,SDF-1,Stromal cell-derived factor 1,SDF1
+CXCL13,CXCL13,O43927,CXCL13,NA,C-X-C motif chemokine 13,CXCL13
+IL-8,CXCL8,P10145,CXCL8,IL-8,Interleukin-8,IL8
+sICAM,ICAM1,P05362,ICAM1,ICAM-1,Intercellular adhesion molecule 1,ICAM
+IL-11,IL11,P20809,IL11,IL-11,Interleukin-11,IL11
+IL-6,IL6,P05231,IL6,IL-6,Interleukin-6,IL6
+MMP7,MMP7,P09237,MMP7,NA,Matrilysin,MMP7
+MUC1,MUC1,P15941,MUC1,MUC-1,Mucin-1,MUC1
+POSTN,POSTN,Q15063,POSTN,PN,Periostin,POSTN
+tPAI-1,SERPINE1,P05121,SERPINE1,PAI,Plasminogen activator inhibitor 1,PAI1
+SP-D,SFTPD,P35247,SFTPD,SP-D,Pulmonary surfactant-associated protein D,SPD
+OPN,SPP1,P10451,SPP1,NA,Osteopontin,OPN
+TIMP1,TIMP1,P01033,TIMP1,NA,Metalloproteinase inhibitor 1,TIMP1
+TIMP2,TIMP2,P16035,TIMP2,NA,Metalloproteinase inhibitor 2,TIMP2
+TNC,TNC,P24821,TNC,TN,Tenascin,TNC
+CA19-9,CA19.9,NA,NA,NA,sialyl Lewis a,CA19.9
+CYFRA21-1,KRT19,P08727,KRT19,NA,"C-terminus of Keratin, type I cytoskeletal 19",CYFRA21.1
+CA125,MUC16,Q8WXI7,MUC16,MUC-16,Mucin-16,CA125
+SP-A1,SFTPA1,Q8IWL2,SFTPA1,SP-A1,Pulmonary surfactant-associated protein A1,SPA1
