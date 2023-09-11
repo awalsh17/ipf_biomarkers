@@ -107,23 +107,11 @@ scale_fill_discrete <- function(...) {
 
 This report summarizes information on 26 proteins measured in IPF patients' serum from the collaboration with Dr. Lynn Schnapp (U. Wisconsin). This report was updated to include corrected values for IL-11 and additional data for SP-A1.
 
-The high-level conclusions are
-
-+ Several proteins were elevated in IPF patients compared to normal samples 
-  + Epithelial damage: SP-D, AP-A1, CYFRA21-1, CA125
-  + ECM remodeling: TIMP1, MMP7
-  + Inflammatory: YKL40, IP-10, MDC, CXCL13
-+ Several proteins were associated with current treatment (between no treatment and Nintedanib/Pirfenidone: SP-D, sICAM, CYFRA21-1, MDC, TARC, SDF-1ab)
-+ No proteins were different between Nintedanib and Pirfenidone
-+ Some proteins were weakly associated with pulmonary function variables (SP-D, CA19-9)
-+ In subjects with multiple samples over a period of time, many of these proteins remain stable 
-+ In patients with lung transplants, some proteins show consistent changes (SP-D, sICAM1, TARC, MDC, CYFRA21-1)
-
 Contributors: Alice Walsh, Larisa Sereda, Christina Ebert, Lynn Schnapp
 
 # Purpose
 
-The primary objective of the MUSC IPF collaboration is to discover circulating biomarkers of IPF while on treatment.
+The primary objective of the collaboration is to discover circulating biomarkers of IPF while on treatment.
 
 # Load the data
 ```{r load_data, echo=FALSE, warning=FALSE, message = FALSE}
@@ -141,7 +129,7 @@ new_names <- symbol_mapping$clean_label[match(old_names, symbol_mapping$Label)]
 colnames(dta)[1:26] <- new_names
 ```
 
-The clinical data and Inova data are loaded. Alice also manually mapped the identifiers for the 26 proteins to official gene symbols (when they existed) so we could have a common set of identifiers across all analysis.
+The clinical data and molecular data are loaded. Alice also manually mapped the identifiers for the 26 proteins to official gene symbols (when they existed) so we could have a common set of identifiers across all analysis.
 
 Therefore, the proteins were re-mapped to these identifiers (from "Label" to "gene_symbol")
 ```{r}
