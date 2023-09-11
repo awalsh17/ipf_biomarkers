@@ -927,7 +927,7 @@ log2(protein+0.1) ~ disease + (1|Subject.ID)
 
 The FDR values are given below for all proteins. The median for nearly all the proteins is numerically higher in the IPF samples than the normal samples. However, 9 proteins meet a FDR cutoff of 0.05.
 
-Results are grouped into the three biologal function groups: epithelial damage, ECM remodeling, and inflammation.
+Results are grouped into the three biological function groups: epithelial damage, ECM remodeling, and inflammation.
 
 
 ```{r warning=FALSE}
