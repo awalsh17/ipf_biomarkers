@@ -53,7 +53,7 @@ list(
 
   # Load gene names
   tar_target(gene_file,
-             "gene_symbols.txt",
+             "data/gene_symbols.txt",
              format = "file"),
   tar_target(genes_to_plot, readLines(gene_file)),
 
